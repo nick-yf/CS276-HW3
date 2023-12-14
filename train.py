@@ -136,7 +136,8 @@ def main():
     optimizer_D = torch.optim.Adam(model_D.parameters(), lr=args.lr)
 
     if args.resume_epoch is not None:
-        checkpoint = torch.load(os.path.join(args.load_dir, 'model.pt'))
+        load_dir = os.path.join(output_dir, f'epoch_{args.resume_epoch}')
+        checkpoint = torch.load(os.path.join(load_dir, 'model.pt'))
         model_G.load_state_dict(checkpoint['model_G'])
         model_D.load_state_dict(checkpoint['model_D'])
         optimizer_G.load_state_dict(checkpoint['optimizer_G'])

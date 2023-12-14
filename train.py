@@ -3,6 +3,8 @@ import os
 import json
 import math
 import time
+import shutil
+
 import torch
 import torchvision
 import torch.nn as nn
@@ -14,6 +16,7 @@ from dataset import TrainDataset, TestDataset
 from model import EGAN_G, EGAN_D
 from lithosim import lithosim_cuda as litho
 
+BEST_COST = 1e10
 
 def save_model_and_result(
     output_dir: str,
@@ -69,6 +72,12 @@ def save_model_and_result(
             cost += (end_time - start_time) * 100 + PVB.item() + L2_error.item()
         print('Cost: {}'.format(cost))
         writer.add_scalar('cost', cost, epoch)
+        if cost < BEST_COST:
+            BEST_COST = cost
+            shutil.rmtree(os.path.join(output_dir, 'best_result'))
+            shutil.copytree(save_dir, os.path.join(output_dir, 'best_result'))
+        else:
+            shutil.rmtree(save_dir)
 
 
 def main():

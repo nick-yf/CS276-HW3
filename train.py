@@ -16,16 +16,16 @@ from dataset import TrainDataset, TestDataset
 from model import EGAN_G, EGAN_D
 from lithosim import lithosim_cuda as litho
 
-BEST_COST = 1e10
 
 def save_model_and_result(
     output_dir: str,
     epoch: int,
+    step: int,
+    best_cost: float,
     model_G: nn.Module,
     model_D: nn.Module,
     optimizer_G: torch.optim.Optimizer,
     optimizer_D: torch.optim.Optimizer,
-    step: int,
     test_dataloader: DataLoader,
     device: torch.device,
     writer: SummaryWriter,
@@ -36,22 +36,11 @@ def save_model_and_result(
     weight_def: torch.Tensor,
     kernel_num: int
 ):
-    global BEST_COST
     save_dir = os.path.join(output_dir, f'epoch_{epoch}')
     downsample = nn.AvgPool2d(8, stride=8)
     upsample = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    torch.save(
-        {
-            "model_G": model_G.state_dict(),
-            "model_D": model_D.state_dict(),
-            "optimizer_G": optimizer_G.state_dict(),
-            "optimizer_D": optimizer_D.state_dict(),
-            "step": step
-        },
-        os.path.join(save_dir, 'model.pt')
-    )
     with torch.no_grad():
         cost = 0
         for i, layout in enumerate(test_dataloader):
@@ -73,12 +62,25 @@ def save_model_and_result(
             cost += (end_time - start_time) * 100 + PVB.item() + L2_error.item()
         print('Cost: {}'.format(cost))
         writer.add_scalar('cost', cost, epoch)
-        if cost < BEST_COST:
-            BEST_COST = cost
-            shutil.rmtree(os.path.join(output_dir, 'best_result'), ignore_errors=True)
-            shutil.copytree(save_dir, os.path.join(output_dir, 'best_result'))
-        else:
-            shutil.rmtree(save_dir, ignore_errors=True)
+
+    if cost < best_cost:
+        torch.save(
+            {
+                "model_G": model_G.state_dict(),
+                "model_D": model_D.state_dict(),
+                "optimizer_G": optimizer_G.state_dict(),
+                "optimizer_D": optimizer_D.state_dict(),
+                "step": step,
+                "best_cost": best_cost,
+                "epoch": epoch
+            },
+            os.path.join(save_dir, 'model.pt')
+        )
+        best_cost = cost
+        shutil.rmtree(os.path.join(output_dir, 'best_result'), ignore_errors=True)
+        shutil.copytree(save_dir, os.path.join(output_dir, 'best_result'))
+    else:
+        shutil.rmtree(save_dir, ignore_errors=True)
 
 
 def main():
@@ -146,26 +148,29 @@ def main():
     optimizer_D = torch.optim.Adam(model_D.parameters(), lr=args.lr)
 
     if args.resume_epoch is not None:
-        load_dir = os.path.join(output_dir, f'epoch_{args.resume_epoch}')
+        load_dir = os.path.join(output_dir, f'best_result')
         checkpoint = torch.load(os.path.join(load_dir, 'model.pt'))
         model_G.load_state_dict(checkpoint['model_G'])
         model_D.load_state_dict(checkpoint['model_D'])
         optimizer_G.load_state_dict(checkpoint['optimizer_G'])
         optimizer_D.load_state_dict(checkpoint['optimizer_D'])
         step = checkpoint['step']
+        start_epoch = checkpoint['epoch']
+        best_cost = checkpoint['best_cost']
     else:
         step = 0
         args.resume_epoch = 0
         model_D.eval()
         model_G.train()
-        save_model_and_result(
+        best_cost = save_model_and_result(
             output_dir,
             0,
+            0,
+            1e10,
             model_G,
             model_D,
             optimizer_G,
             optimizer_D,
-            step,
             test_dataloader,
             device,
             writer,
@@ -177,24 +182,7 @@ def main():
             args.kernel_num
         )
 
-    # # ILT pretrain
-    # for i, batch in enumerate(train_dataloader):
-    #     layout, _ = batch
-    #     layout = layout.to(device)
-    #     while True:
-    #         optimizer_G.zero_grad()
-    #         fake_mask = model_G(layout)
-    #         fake_mask.retain_grad()
-    #         wafer, _ = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
-    #         L2_error = pixel_loss(wafer, layout)
-    #         print(L2_error)
-    #         if L2_error < 5e-4:
-    #             break
-    #         L2_error.backward()
-    #         optimizer_G.step()
-    #         writer.add_scalar('L2_loss', L2_error.item(), i)
-
-    for e in range(args.resume_epoch, args.epochs):
+    for e in range(start_epoch, args.epochs):
         model_D.train()
         model_G.train()
         for i, batch in enumerate(train_dataloader):
@@ -221,17 +209,6 @@ def main():
             D_loss = adversial_loss(real_output, real_label) + adversial_loss(fake_output, fake_label)
             D_loss.backward()
             optimizer_D.step()
-            # ILT refinement
-            # while True:
-            #     optimizer_G.zero_grad()
-            #     fake_mask = model_G(layout)
-            #     fake_mask.retain_grad()
-            #     wafer, _ = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
-            #     L2_error = pixel_loss(wafer, layout)
-            #     L2_error.backward()
-            #     if torch.mean(torch.abs(fake_mask.grad)) < 5e-4:
-            #         break
-            #     optimizer_G.step()
             # print log
             writer.add_scalar('D_loss', D_loss.item(), step)
             writer.add_scalar('G_loss', G_loss.item(), step)
@@ -260,11 +237,12 @@ def main():
         save_model_and_result(
             output_dir,
             e+1,
+            step,
+            best_cost,
             model_G,
             model_D,
             optimizer_G,
             optimizer_D,
-            step,
             test_dataloader,
             device,
             writer,

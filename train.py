@@ -36,6 +36,7 @@ def save_model_and_result(
     weight_def: torch.Tensor,
     kernel_num: int
 ):
+    global BEST_COST
     save_dir = os.path.join(output_dir, f'epoch_{epoch}')
     downsample = nn.AvgPool2d(8, stride=8)
     upsample = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
@@ -74,10 +75,10 @@ def save_model_and_result(
         writer.add_scalar('cost', cost, epoch)
         if cost < BEST_COST:
             BEST_COST = cost
-            shutil.rmtree(os.path.join(output_dir, 'best_result'))
+            shutil.rmtree(os.path.join(output_dir, 'best_result'), ignore_errors=True)
             shutil.copytree(save_dir, os.path.join(output_dir, 'best_result'))
         else:
-            shutil.rmtree(save_dir)
+            shutil.rmtree(save_dir, ignore_errors=True)
 
 
 def main():
@@ -154,6 +155,7 @@ def main():
         step = checkpoint['step']
     else:
         step = 0
+        args.resume_epoch = 0
         model_D.eval()
         model_G.train()
         save_model_and_result(
@@ -192,7 +194,7 @@ def main():
     #         optimizer_G.step()
     #         writer.add_scalar('L2_loss', L2_error.item(), i)
 
-    for e in range(args.epochs):
+    for e in range(args.resume_epoch, args.epochs):
         model_D.train()
         model_G.train()
         for i, batch in enumerate(train_dataloader):

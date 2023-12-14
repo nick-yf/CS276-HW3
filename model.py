@@ -5,7 +5,6 @@ class EGAN_G(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.relu = nn.ReLU(inplace=True)
-        self.sigmoid = nn.Sigmoid()
         self.pixel_shuffle = nn.PixelShuffle(2)
         # self.avgpool = nn.AvgPool2d(8, stride=8)
         # self.upsample = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
@@ -46,7 +45,6 @@ class EGAN_G(nn.Module):
         x = torch.cat((x, enc1), dim=1)
         x = self.relu(self.dec_conv5(x))
         x = self.pixel_shuffle(x)
-        x = self.sigmoid(x)
         # Upsample
         # x = self.upsample(x)
         return x

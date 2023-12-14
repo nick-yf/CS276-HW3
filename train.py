@@ -144,6 +144,8 @@ def main():
         step = checkpoint['step']
     else:
         step = 0
+        model_D.eval()
+        model_G.train()
         save_model_and_result(
             output_dir,
             0,
@@ -181,6 +183,8 @@ def main():
     #         writer.add_scalar('L2_loss', L2_error.item(), i)
 
     for e in range(args.epochs):
+        model_D.train()
+        model_G.train()
         for i, batch in enumerate(train_dataloader):
             layout, mask = batch
             layout = layout.to(device)
@@ -239,6 +243,8 @@ def main():
             step += 1
         print('Epoch {} finished'.format(e))
         # save model
+        model_D.eval()
+        model_G.eval()
         save_model_and_result(
             output_dir,
             e+1,

@@ -1,5 +1,6 @@
 import argparse
 import os
+import json
 import math
 import time
 import torch
@@ -117,6 +118,8 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    with open(os.path.join(args.outdir, "args.json"), "w") as f:
+        json.dump(vars(args), f, indent=4)
 
     model_G = EGAN_G()
     model_D = EGAN_D()

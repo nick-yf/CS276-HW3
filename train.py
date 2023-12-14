@@ -33,6 +33,8 @@ def save_model_and_result(
     kernel_num: int
 ):
     save_dir = os.path.join(output_dir, f'epoch_{epoch}')
+    downsample = nn.AvgPool2d(8, stride=8)
+    upsample = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     torch.save(
@@ -48,10 +50,12 @@ def save_model_and_result(
     with torch.no_grad():
         cost = 0
         for i, layout in enumerate(test_dataloader):
-            start_time = time.time()
             layout = layout.to(device)
+            start_time = time.time()
+            layout_downsampled = downsample(layout)
+            fake_mask = model_G(layout_downsampled)
+            fake_mask = upsample(fake_mask)
             end_time = time.time()
-            fake_mask = model_G(layout)
             _, wafer_nom = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=kernel_num, dose=1.0)
             _, wafer_min = litho.lithosim(fake_mask, threshold, kernels_def, weight_def, None, save_bin_wafer_image=False, kernels_number=kernel_num, dose=0.98)
             _, wafer_max = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=kernel_num, dose=1.02)
@@ -60,7 +64,8 @@ def save_model_and_result(
             torchvision.utils.save_image(layout, os.path.join(save_dir, f"layout_{i}.png"))
             torchvision.utils.save_image(wafer_nom, os.path.join(save_dir, f"wafer_{i}.png"))
             torchvision.utils.save_image(fake_mask, os.path.join(save_dir, f"mask_{i}.png"))
-            cost += (start_time - end_time) * 100 + PVB.item() + L2_error.item()
+            print(f"time cost: {(end_time - start_time) * 100}, L2 error: {L2_error.item()}, PVB: {PVB.item()}")
+            cost += (end_time - start_time) * 100 + PVB.item() + L2_error.item()
         print('Cost: {}'.format(cost))
         writer.add_scalar('cost', cost, epoch)
 
@@ -115,6 +120,7 @@ def main():
 
     model_G = EGAN_G()
     model_D = EGAN_D()
+    downsample = nn.AvgPool2d(8, stride=8)
     adversial_loss = nn.BCEWithLogitsLoss()
     pixel_loss = nn.MSELoss()
 
@@ -154,11 +160,30 @@ def main():
             args.kernel_num
         )
 
+    # # ILT pretrain
+    # for i, batch in enumerate(train_dataloader):
+    #     layout, _ = batch
+    #     layout = layout.to(device)
+    #     while True:
+    #         optimizer_G.zero_grad()
+    #         fake_mask = model_G(layout)
+    #         fake_mask.retain_grad()
+    #         wafer, _ = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
+    #         L2_error = pixel_loss(wafer, layout)
+    #         print(L2_error)
+    #         if L2_error < 5e-4:
+    #             break
+    #         L2_error.backward()
+    #         optimizer_G.step()
+    #         writer.add_scalar('L2_loss', L2_error.item(), i)
+
     for e in range(args.epochs):
         for i, batch in enumerate(train_dataloader):
             layout, mask = batch
             layout = layout.to(device)
             mask = mask.to(device)
+            layout = downsample(layout)
+            mask = downsample(mask)
             real_label = torch.ones((layout.shape[0], 1)).to(device)
             fake_label = torch.zeros((layout.shape[0], 1)).to(device)
             fake_mask = model_G(layout)
@@ -178,16 +203,16 @@ def main():
             D_loss.backward()
             optimizer_D.step()
             # ILT refinement
-            while True:
-                optimizer_G.zero_grad()
-                fake_mask = model_G(layout)
-                fake_mask.retain_grad()
-                wafer, _ = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
-                L2_error = pixel_loss(wafer, layout)
-                L2_error.backward()
-                if torch.mean(torch.abs(fake_mask.grad)) < 5e-4:
-                    break
-                optimizer_G.step()
+            # while True:
+            #     optimizer_G.zero_grad()
+            #     fake_mask = model_G(layout)
+            #     fake_mask.retain_grad()
+            #     wafer, _ = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
+            #     L2_error = pixel_loss(wafer, layout)
+            #     L2_error.backward()
+            #     if torch.mean(torch.abs(fake_mask.grad)) < 5e-4:
+            #         break
+            #     optimizer_G.step()
             # print log
             writer.add_scalar('D_loss', D_loss.item(), step)
             writer.add_scalar('G_loss', G_loss.item(), step)
@@ -197,11 +222,11 @@ def main():
                 with torch.no_grad():
                     n = int(math.ceil(layout.shape[0] ** 0.5))
                     _, wafer_nom = litho.lithosim(fake_mask, threshold, kernels, weight, None, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
-                    generated_wafers = torch.ones((n * 2048, n * 2048))
-                    original_wafers = torch.ones((n * 2048, n * 2048))
+                    generated_wafers = torch.ones((n * 256, n * 256))
+                    original_wafers = torch.ones((n * 256, n * 256))
                     for j in range(layout.shape[0]):
-                        generated_wafers[(j // n) * 2048:((j // n) + 1) * 2048, (j % n) * 2048:((j % n) + 1) * 2048] = wafer_nom[j, :, :]
-                        original_wafers[(j // n) * 2048:((j // n) + 1) * 2048, (j % n) * 2048:((j % n) + 1) * 2048] = layout[j, :, :]
+                        generated_wafers[(j // n) * 256:((j // n) + 1) * 256, (j % n) * 256:((j % n) + 1) * 256] = wafer_nom[j, :, :]
+                        original_wafers[(j // n) * 256:((j // n) + 1) * 256, (j % n) * 256:((j % n) + 1) * 256] = layout[j, :, :]
                     generated_wafers = generated_wafers * 255
                     generated_wafers = generated_wafers.cpu().to(torch.uint8)
                     original_wafers = original_wafers * 255

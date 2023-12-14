@@ -6,8 +6,8 @@ class EGAN_G(nn.Module):
         super().__init__()
         self.relu = nn.ReLU(inplace=True)
         self.pixel_shuffle = nn.PixelShuffle(2)
-        self.avgpool = nn.AvgPool2d(8, stride=8)
-        self.upsample = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
+        # self.avgpool = nn.AvgPool2d(8, stride=8)
+        # self.upsample = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
 
         self.enc_conv1 = nn.Conv2d(1, 16, 5, stride=2, padding=2)
         self.enc_conv2 = nn.Conv2d(16, 64, 5, stride=2, padding=2)
@@ -23,7 +23,7 @@ class EGAN_G(nn.Module):
 
     def forward(self, x):
         # Downsample
-        x = self.avgpool(x)
+        # x = self.avgpool(x)
         # Encoder
         enc1 = self.relu(self.enc_conv1(x))
         enc2 = self.relu(self.enc_conv2(enc1))
@@ -46,7 +46,7 @@ class EGAN_G(nn.Module):
         x = self.relu(self.dec_conv5(x))
         x = self.pixel_shuffle(x)
         # Upsample
-        x = self.upsample(x)
+        # x = self.upsample(x)
         return x
 
 
@@ -57,33 +57,33 @@ class EGAN_D(nn.Module):
         input_channel = 2
         width = 256
 
-        layers.append(nn.AvgPool2d(8, stride=8))
+        # layers.append(nn.AvgPool2d(8, stride=8))
 
         for c in [64, 128]:
             layers.append(nn.Conv2d(input_channel, c, 3, stride=1, padding=1))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             layers.append(nn.Conv2d(c, c, 3, stride=1, padding=1))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             layers.append(nn.Conv2d(c, c, 3, stride=2, padding=1))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             input_channel = c
             width //= 2
 
         for c in [256, 512, 512]:
             layers.append(nn.Conv2d(input_channel, c, 3, stride=1, padding=1))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             layers.append(nn.Conv2d(c, c, 3, stride=1, padding=1))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             layers.append(nn.Conv2d(c, c, 3, stride=2, padding=1))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             input_channel = c
             width //= 2
 
         layers.append(nn.Flatten())
         layers.append(nn.Linear(width * width * input_channel, 2048))
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.LeakyReLU(inplace=True))
         layers.append(nn.Linear(2048, 512))
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.LeakyReLU(inplace=True))
         layers.append(nn.Linear(512, 1))
         self.layers = nn.Sequential(*layers)
 

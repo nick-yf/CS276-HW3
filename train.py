@@ -81,6 +81,7 @@ def save_model_and_result(
         shutil.copytree(save_dir, os.path.join(output_dir, 'best_result'))
     else:
         shutil.rmtree(save_dir, ignore_errors=True)
+    return best_cost
 
 
 def main():
@@ -94,7 +95,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
     parser.add_argument("--cpu_num", type=int, default=8, help="number of cpu threads to use when loading data")
     parser.add_argument("--log_steps", type=int, default=100, help="number of steps when print log")
-    parser.add_argument("--resume_epoch", type=int, default=None, help="the epoch to load model")
+    parser.add_argument("--resume", action="store_true", help="the epoch to load model")
     # lithosim parameters
     parser.add_argument('--kernel_data_path', type=str, default='lithosim/lithosim_kernels/torch_tensor')
     parser.add_argument('--kernel_num', type=int, default=24, help='24 SOCS kernels')
@@ -147,7 +148,7 @@ def main():
     optimizer_G = torch.optim.Adam(model_G.parameters(), lr=args.lr)
     optimizer_D = torch.optim.Adam(model_D.parameters(), lr=args.lr)
 
-    if args.resume_epoch is not None:
+    if args.resume:
         load_dir = os.path.join(output_dir, f'best_result')
         checkpoint = torch.load(os.path.join(load_dir, 'model.pt'))
         model_G.load_state_dict(checkpoint['model_G'])
@@ -159,14 +160,15 @@ def main():
         best_cost = checkpoint['best_cost']
     else:
         step = 0
-        args.resume_epoch = 0
+        start_epoch = 0
+        best_cost = 1e10
         model_D.eval()
         model_G.train()
         best_cost = save_model_and_result(
             output_dir,
-            0,
-            0,
-            1e10,
+            start_epoch,
+            step,
+            best_cost,
             model_G,
             model_D,
             optimizer_G,

@@ -225,9 +225,7 @@ def main():
                     for j in range(layout.shape[0]):
                         generated_wafers[(j // n) * 256:((j // n) + 1) * 256, (j % n) * 256:((j % n) + 1) * 256] = wafer_nom[j, :, :]
                         original_wafers[(j // n) * 256:((j // n) + 1) * 256, (j % n) * 256:((j % n) + 1) * 256] = layout[j, :, :]
-                    generated_wafers = generated_wafers * 255
                     generated_wafers = generated_wafers.cpu().to(torch.uint8)
-                    original_wafers = original_wafers * 255
                     original_wafers = original_wafers.cpu().to(torch.uint8)
                     writer.add_image('layout', original_wafers, step, dataformats='HW')
                     writer.add_image('generated_wafer', generated_wafers, step, dataformats='HW')

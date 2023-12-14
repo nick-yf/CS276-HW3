@@ -236,7 +236,7 @@ def main():
         # save model
         model_D.eval()
         model_G.eval()
-        save_model_and_result(
+        best_cost = save_model_and_result(
             output_dir,
             e+1,
             step,

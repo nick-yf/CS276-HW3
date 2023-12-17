@@ -20,8 +20,8 @@ class TrainDataset(Dataset):
     def __getitem__(self, idx):
         layout = io.read_image(os.path.join(self.train_layout_dir, self.train_layout_list[idx]), mode=io.image.ImageReadMode.GRAY)
         mask = io.read_image(os.path.join(self.train_mask_dir, self.train_mask_list[idx]), mode=io.image.ImageReadMode.GRAY)
-        layout = layout.float()
-        mask = mask.float()
+        layout = (layout > 0).float()
+        mask = (mask > 0).float()
         return layout, mask
 
 
@@ -36,5 +36,5 @@ class TestDataset(Dataset):
 
     def __getitem__(self, idx):
         layout = io.read_image(os.path.join(self.test_layout_dir, self.test_layout_list[idx]), mode=io.image.ImageReadMode.GRAY)
-        layout = layout.float()
+        layout = (layout > 0).float()
         return layout

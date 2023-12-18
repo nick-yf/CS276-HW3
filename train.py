@@ -110,11 +110,12 @@ def main():
     parser.add_argument("--batch_size", type=int, default=4, help="size of the batches when training")
     parser.add_argument("--g_lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--d_lr", type=float, default=1e-5, help="learning rate")
-    parser.add_argument("--g_lr_decay", type=float, default=0.9, help="decay of learning rate per epoch")
-    parser.add_argument("--d_lr_decay", type=float, default=0.9, help="decay of learning rate per epoch")
+    parser.add_argument("--g_lr_decay", type=float, default=0.95, help="decay of learning rate per epoch")
+    parser.add_argument("--d_lr_decay", type=float, default=0.95, help="decay of learning rate per epoch")
     parser.add_argument("--cpu_num", type=int, default=8, help="number of cpu threads to use when loading data")
     parser.add_argument("--log_steps", type=int, default=100, help="number of steps when print log")
     parser.add_argument("--resume", action="store_true", help="the epoch to load model")
+    parser.add_argument("--ckpt_path", type=str, default=None, help="the path of checkpoint")
     # lithosim parameters
     parser.add_argument('--kernel_data_path', type=str, default='lithosim/lithosim_kernels/torch_tensor')
     parser.add_argument('--kernel_num', type=int, default=24, help='24 SOCS kernels')
@@ -169,6 +170,9 @@ def main():
     scheduler_G = torch.optim.lr_scheduler.ExponentialLR(optimizer_G, args.g_lr_decay)
     scheduler_D = torch.optim.lr_scheduler.ExponentialLR(optimizer_D, args.d_lr_decay)
 
+    step = 0
+    start_epoch = 0
+    best_cost = 1e10
     if args.resume:
         checkpoint = torch.load(os.path.join(output_dir, 'best_model.pt'))
         model_G.load_state_dict(checkpoint['model_G'])
@@ -180,33 +184,39 @@ def main():
         step = checkpoint['step']
         start_epoch = checkpoint['epoch']
         best_cost = checkpoint['best_cost']
-    else:
-        step = 0
-        start_epoch = 0
-        best_cost = 1e10
-        model_D.eval()
-        model_G.train()
-        best_cost = save_model_and_result(
-            output_dir,
-            start_epoch,
-            step,
-            best_cost,
-            model_G,
-            model_D,
-            optimizer_G,
-            optimizer_D,
-            scheduler_G,
-            scheduler_D,
-            test_dataloader,
-            device,
-            writer,
-            threshold,
-            kernels,
-            weight,
-            kernels_def,
-            weight_def,
-            args.kernel_num
-        )
+    elif args.ckpt_path is not None:
+        checkpoint = torch.load(args.ckpt_path)
+        model_G.load_state_dict(checkpoint['model_G'])
+        model_D.load_state_dict(checkpoint['model_D'])
+        optimizer_G.load_state_dict(checkpoint['optimizer_G'])
+        optimizer_D.load_state_dict(checkpoint['optimizer_D'])
+        scheduler_G.load_state_dict(checkpoint['scheduler_G'])
+        scheduler_D.load_state_dict(checkpoint['scheduler_D'])
+        best_cost = checkpoint['best_cost']
+
+    model_D.eval()
+    model_G.train()
+    best_cost = save_model_and_result(
+        output_dir,
+        start_epoch,
+        step,
+        best_cost,
+        model_G,
+        model_D,
+        optimizer_G,
+        optimizer_D,
+        scheduler_G,
+        scheduler_D,
+        test_dataloader,
+        device,
+        writer,
+        threshold,
+        kernels,
+        weight,
+        kernels_def,
+        weight_def,
+        args.kernel_num
+    )
 
     for e in range(start_epoch, args.epochs):
         model_D.train()

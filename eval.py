@@ -9,10 +9,10 @@ import torchvision
 parser = argparse.ArgumentParser(description='take parameters')
 parser.add_argument('--kernels_root', type=str,
                     default='lithosim/lithosim_kernels/bin_data')
-parser.add_argument('--mask_root', type=str, default='output/refine_net_output/')
-parser.add_argument('--mask_file_name', type=str, default='M1_test1.png')
-parser.add_argument('--layout_root', type=str, default='output/ibm_opc_test/')
-parser.add_argument('--layout_file_name', type=str, default='M1_test1.png')
+parser.add_argument('--mask_root', type=str, default='../data/train/mask')
+parser.add_argument('--mask_file_name', type=str, default='1.glpOPC.png')
+parser.add_argument('--layout_root', type=str, default='../data/train/layout')
+parser.add_argument('--layout_file_name', type=str, default='1.glp.png')
 parser.add_argument('--output_root', type=str,
                     default='output/refine_litho_out')
 parser.add_argument('--kernel_num', type=int, default=24, help='24 SOCS kernels')
@@ -56,7 +56,7 @@ def eval():
         layout_data = litho.load_image(os.path.join(args.layout_root, args.layout_file_name)).to(device)
 
         print("------ Start lithography simulation for %s ------" % args.mask_file_name)
-        _, wafer_nom = litho.lithosim(mask_data, threshold, kernels, weight, save_name, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.0)
+        _, wafer_nom = litho.lithosim(mask_data, threshold, kernels, weight, save_name, save_bin_wafer_image=True, kernels_number=args.kernel_num, dose=1.0)
         _, wafer_min = litho.lithosim(mask_data, threshold, kernels_def, weight_def, save_name, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=0.98)
         _, wafer_max = litho.lithosim(mask_data, threshold, kernels, weight, save_name, save_bin_wafer_image=False, kernels_number=args.kernel_num, dose=1.02)
 

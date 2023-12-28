@@ -110,11 +110,11 @@ def main():
     parser.add_argument("--batch_size", type=int, default=4, help="size of the batches when training")
     parser.add_argument("--g_lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--d_lr", type=float, default=1e-5, help="learning rate")
-    parser.add_argument("--g_lr_decay", type=float, default=0.95, help="decay of learning rate per epoch")
-    parser.add_argument("--d_lr_decay", type=float, default=0.95, help="decay of learning rate per epoch")
+    parser.add_argument("--g_lr_decay", type=float, default=1.0, help="decay of learning rate per epoch")
+    parser.add_argument("--d_lr_decay", type=float, default=1.0, help="decay of learning rate per epoch")
     parser.add_argument("--cpu_num", type=int, default=8, help="number of cpu threads to use when loading data")
     parser.add_argument("--log_steps", type=int, default=100, help="number of steps when print log")
-    parser.add_argument("--resume", action="store_true", help="the epoch to load model")
+    parser.add_argument("--resume", action="store_true", help="whether to resume from the best model in the output directory")
     parser.add_argument("--ckpt_path", type=str, default=None, help="the path of checkpoint")
     # lithosim parameters
     parser.add_argument('--kernel_data_path', type=str, default='lithosim/lithosim_kernels/torch_tensor')
@@ -173,6 +173,8 @@ def main():
     step = 0
     start_epoch = 0
     best_cost = 1e10
+    if args.resume and args.ckpt_path is not None:
+        raise ValueError('resume and ckpt_path cannot be set at the same time')
     if args.resume:
         checkpoint = torch.load(os.path.join(output_dir, 'best_model.pt'))
         model_G.load_state_dict(checkpoint['model_G'])
@@ -195,7 +197,7 @@ def main():
         best_cost = checkpoint['best_cost']
 
     model_D.eval()
-    model_G.train()
+    model_G.eval()
     best_cost = save_model_and_result(
         output_dir,
         start_epoch,
@@ -223,25 +225,37 @@ def main():
         model_G.train()
         for i, batch in enumerate(train_dataloader):
             layout, mask = batch
+            B = layout.shape[0]
             layout = layout.to(device)
             mask = mask.to(device)
             layout = downsample(layout)
             mask = downsample(mask)
-            real_label = torch.ones((layout.shape[0], 1)).to(device)
-            fake_label = torch.zeros((layout.shape[0], 1)).to(device)
             fake_mask = model_G(layout)
-            real_pair = torch.cat((mask, layout), dim=1)
-            fake_pair = torch.cat((fake_mask, layout), dim=1)
+            real_pairs = []
+            fake_pairs = []
+            for j in range(B):
+                for k in range(B):
+                    if j != k:
+                        fake_pairs.append(torch.cat((mask[j:j+1], layout[k:k+1]), dim=1))
+                    else:
+                        real_pairs.append(torch.cat((mask[j:j+1], layout[k:k+1]), dim=1))
+            fake_pair_gen = torch.cat((fake_mask, layout), dim=1)
+            fake_pairs.append(fake_pair_gen)
+            real_pairs = torch.cat(real_pairs, dim=0)
+            fake_pairs = torch.cat(fake_pairs, dim=0)
             # Train G
             optimizer_G.zero_grad()
-            fake_output = model_D(fake_pair)
+            fake_output = model_D(fake_pair_gen)
+            real_label = torch.ones((layout.shape[0], 1)).to(device)
             G_loss = adversial_loss(fake_output, real_label) + args.alpha * pixel_loss(fake_mask, mask)
             G_loss.backward()
             optimizer_G.step()
             # Train D
             optimizer_D.zero_grad()
-            real_output = model_D(real_pair)
-            fake_output = model_D(fake_pair.detach())
+            real_output = model_D(real_pairs)
+            fake_output = model_D(fake_pairs.detach())
+            real_label = torch.ones((real_pairs.shape[0], 1)).to(device)
+            fake_label = torch.zeros((fake_pairs.shape[0], 1)).to(device)
             D_loss = adversial_loss(real_output, real_label) + adversial_loss(fake_output, fake_label)
             D_loss.backward()
             optimizer_D.step()
@@ -266,8 +280,8 @@ def main():
                     writer.add_image('wafer/layout', original_wafers, step, dataformats='HW')
                     writer.add_image('wafer/generated_wafer', generated_wafers, step, dataformats='HW')
             step += 1
-        # scheduler_G.step()
-        # scheduler_D.step()
+        scheduler_G.step()
+        scheduler_D.step()
         print('Epoch {} finished'.format(e))
         # save model
         model_D.eval()
